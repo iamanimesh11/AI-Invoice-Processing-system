@@ -1,0 +1,34 @@
+# docker-compose.override.yml
+# Development overrides — applied automatically by `docker compose up`.
+# FIX: --reload and debug settings are separated from the production compose file.
+#
+# Production deploys should NOT use this file:
+#   docker compose -f docker-compose.yml up
+#
+# Development (default):
+#   docker compose up   (automatically merges this file)
+
+version: "3.9"
+
+services:
+  upload_service:
+    environment:
+      LOG_LEVEL: DEBUG
+    command:
+      - uvicorn
+      - services.upload_service.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload           # Hot reload for development only
+      - --log-level
+      - debug
+
+  airflow_scheduler:
+    environment:
+      AIRFLOW__LOGGING__LOGGING_LEVEL: DEBUG
+
+  dashboard:
+    environment:
+      LOG_LEVEL: DEBUG

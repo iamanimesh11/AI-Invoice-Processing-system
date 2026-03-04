@@ -1,0 +1,37 @@
+# ── Airflow Worker Dockerfile ──────────────────────────────────────────────────
+# FIX: Uses requirements/worker.txt — no Streamlit, no FastAPI in Airflow image
+FROM apache/airflow:2.8.1-python3.10
+
+LABEL service="airflow" version="2.0"
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-eng \
+        poppler-utils \
+        libpq-dev build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy and install only worker-relevant Python deps
+COPY requirements/base.txt   /tmp/base.txt
+COPY requirements/worker.txt /tmp/worker.txt
+RUN pip install --no-cache-dir -r /tmp/worker.txt
+
+# Copy application source
+RUN mkdir -p /app
+COPY services/ /app/services/
+COPY config/   /app/config/
+COPY database/ /app/database/
+COPY alembic.ini /app/alembic.ini
+COPY airflow/dags/ /opt/airflow/dags/
+COPY docker/entrypoint.airflow.sh /entrypoint.airflow.sh
+
+RUN mkdir -p /app/data/invoices/raw /app/data/invoices/in_progress \
+             /app/data/invoices/processed /app/data/invoices/failed \
+             /app/data/ocr /app/data/extracted \
+    && chown -R airflow:0 /app /opt/airflow/dags /entrypoint.airflow.sh \
+    && chmod +x /entrypoint.airflow.sh
+
+USER airflow
+
+ENV PYTHONPATH="/app:${PYTHONPATH}"

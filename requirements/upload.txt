@@ -1,0 +1,5 @@
+# requirements/upload.txt — FastAPI upload service only
+-r base.txt
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9

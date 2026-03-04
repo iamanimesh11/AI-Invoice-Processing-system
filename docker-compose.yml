@@ -1,0 +1,215 @@
+version: "3.9"
+
+# ============================================================
+# Invoice AI Pipeline v2 — Docker Compose
+#
+# Before first run:
+#   1. cp .env.example .env
+#   2. bash scripts/generate_secrets.sh  (fills in crypto keys)
+#   3. Add OPENAI_API_KEY to .env
+#   4. docker compose up --build
+#
+# FIX: Hardcoded Fernet key default removed. The compose file
+# now requires AIRFLOW__CORE__FERNET_KEY to be explicitly set
+# in .env — missing it causes a clear startup failure rather
+# than silently using a publicly known key.
+# ============================================================
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.airflow
+  env_file: .env
+  environment:
+    # Airflow metadata DB points to the shared postgres instance
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: &pg_conn
+      postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    # FIX: No fallback default — missing key = explicit error at startup
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "30"
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "4"
+    PYTHONPATH: /app
+    # App settings forwarded to tasks
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: ${POSTGRES_DB}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+    LLM_MODEL: ${LLM_MODEL:-gpt-3.5-turbo}
+    LOCAL_LLM_URL: ${LOCAL_LLM_URL:-http://host.docker.internal:11434}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    OCR_DPI: ${OCR_DPI:-300}
+    MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-50}
+    # All data paths resolve inside the shared volume
+    INVOICES_RAW_DIR: /app/data/invoices/raw
+    INVOICES_INPROGRESS_DIR: /app/data/invoices/in_progress
+    INVOICES_PROCESSED_DIR: /app/data/invoices/processed
+    INVOICES_FAILED_DIR: /app/data/invoices/failed
+    OCR_OUTPUT_DIR: /app/data/ocr
+    EXTRACTED_OUTPUT_DIR: /app/data/extracted
+  volumes:
+    - invoice_data:/app/data          # Shared between upload, airflow, dashboard
+    - ./airflow/dags:/opt/airflow/dags
+    - ./services:/app/services
+    - ./database:/app/database
+    - ./config:/app/config
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: invoice_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-invoice_db}
+      POSTGRES_USER: ${POSTGRES_USER:-invoice_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-invoice_user} -d ${POSTGRES_DB:-invoice_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Upload Service ─────────────────────────────────────────────────────────
+  upload_service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.upload
+    container_name: invoice_upload_service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      INVOICES_RAW_DIR: /app/data/invoices/raw
+      INVOICES_INPROGRESS_DIR: /app/data/invoices/in_progress
+      INVOICES_PROCESSED_DIR: /app/data/invoices/processed
+      INVOICES_FAILED_DIR: /app/data/invoices/failed
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-50}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    volumes:
+      - invoice_data:/app/data
+      - ./services:/app/services
+      - ./config:/app/config
+      - ./database:/app/database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Airflow Init (one-shot) ────────────────────────────────────────────────
+  airflow_init:
+    <<: *airflow-common
+    container_name: invoice_airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username "${AIRFLOW_ADMIN_USER:-admin}" \
+          --password "${AIRFLOW_ADMIN_PASSWORD}" \
+          --firstname Admin --lastname User \
+          --role Admin \
+          --email admin@invoice-pipeline.local 2>/dev/null || true
+        echo "Airflow init complete."
+    restart: "no"
+
+  # ── Airflow Scheduler ──────────────────────────────────────────────────────
+  airflow_scheduler:
+    <<: *airflow-common
+    container_name: invoice_airflow_scheduler
+    restart: unless-stopped
+    # FIX: entrypoint runs `alembic upgrade head` before scheduler starts
+    entrypoint: ["/entrypoint.airflow.sh"]
+    command: scheduler
+    depends_on:
+      airflow_init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 90s
+
+  # ── Airflow Webserver ──────────────────────────────────────────────────────
+  airflow_webserver:
+    <<: *airflow-common
+    container_name: invoice_airflow_webserver
+    restart: unless-stopped
+    command: webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow_init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Streamlit Dashboard ────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: invoice_dashboard
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8501:8501"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 25s
+
+volumes:
+  postgres_data:
+    driver: local
+  invoice_data:
+    driver: local
+
+networks:
+  default:
+    name: invoice_pipeline_network

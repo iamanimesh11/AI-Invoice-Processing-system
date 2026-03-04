@@ -1,0 +1,31 @@
+# ── Streamlit Dashboard Dockerfile ────────────────────────────────────────────
+# FIX: Uses requirements/dashboard.txt — no pytesseract, no FastAPI
+FROM python:3.10.14-slim
+
+LABEL service="dashboard" version="2.0"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq-dev curl build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements/base.txt      requirements/base.txt
+COPY requirements/dashboard.txt requirements/dashboard.txt
+RUN pip install --no-cache-dir -r requirements/dashboard.txt
+
+COPY dashboard/ ./dashboard/
+COPY database/  ./database/
+COPY config/    ./config/
+
+EXPOSE 8501
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+CMD ["streamlit", "run", "dashboard/app.py", \
+     "--server.port=8501", \
+     "--server.address=0.0.0.0", \
+     "--server.headless=true", \
+     "--browser.gatherUsageStats=false", \
+     "--server.maxUploadSize=50"]

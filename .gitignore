@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/ build/ .eggs/
+
+# Environment — NEVER commit real secrets
+.env
+
+# Docker volumes
+postgres_data/
+
+# Data — uploaded PDFs are not committed
+data/invoices/raw/*.pdf
+data/invoices/in_progress/*.pdf
+data/invoices/processed/*.pdf
+data/invoices/failed/*.pdf
+data/ocr/*.json
+data/extracted/*.json
+
+# IDE
+.vscode/ .idea/ *.swp *.swo
+
+# Airflow
+airflow/logs/
+
+# Test artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Misc
+.DS_Store *.log

@@ -1,0 +1,7 @@
+# requirements/worker.txt — Airflow worker (OCR + LLM extraction)
+-r base.txt
+pytesseract==0.3.10
+pdf2image==1.17.0
+Pillow==10.3.0
+openai==1.23.2
+requests==2.31.0
