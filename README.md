@@ -479,20 +479,3 @@ bash scripts/generate_secrets.sh
 → Run `make seed` to insert 50 synthetic demo invoices, then reload the dashboard.
 
 ---
-
-## 🗺 Roadmap (Stage 2+)
-
-- [ ] Email ingestion (IMAP listener for PDF attachments)
-- [ ] Webhook notifications on pipeline completion / failure
-- [ ] REST API for querying extracted invoice data
-- [ ] Multi-currency normalisation to a base currency
-- [ ] Duplicate invoice detection (same vendor + amount + date)
-- [ ] Fine-tuned extraction model for domain-specific invoice formats
-- [ ] Cloud storage backend (S3-compatible) for large deployments
-- [ ] Role-based dashboard access
-
----
-
-## 📄 License
-
-MIT-see `LICENSE` for details.
