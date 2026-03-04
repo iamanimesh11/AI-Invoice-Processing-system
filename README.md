@@ -1,6 +1,6 @@
-# 🧾 Invoice AI Pipeline v2
+# 🧾 AI Invoice Processing Pipeline
 
-A production-minded, fully local invoice processing system. Upload a PDF, and the pipeline automatically extracts structured data using OCR and an LLM, stores it in PostgreSQL, and visualises analytics in a real-time Streamlit dashboard — all orchestrated by Apache Airflow and containerised with Docker Compose.
+A production-minded, fully local invoice processing system. Upload a PDF, and the pipeline automatically extracts structured data using OCR and an LLM, stores it in PostgreSQL, and visualises analytics in a real-time Streamlit dashboard-all orchestrated by Apache Airflow and containerised with Docker Compose.
 
 ---
 
@@ -158,7 +158,7 @@ cp .env.example .env
 bash scripts/generate_secrets.sh
 # → Copy the printed values into .env
 
-# Add your OpenAI key (or configure Ollama — see below)
+# Add your OpenAI key (or configure Ollama-see below)
 echo "OPENAI_API_KEY=sk-your-key-here" >> .env
 ```
 
@@ -178,9 +178,9 @@ make ps
 
 | Service | URL | Default credentials |
 |---|---|---|
-| FastAPI Upload API | http://localhost:8000/docs | — |
+| FastAPI Upload API | http://localhost:8000/docs |-|
 | Airflow UI | http://localhost:8080 | admin / (your .env password) |
-| Streamlit Dashboard | http://localhost:8501 | — |
+| Streamlit Dashboard | http://localhost:8501 |-|
 | PostgreSQL | localhost:5432 | see .env |
 
 ---
@@ -232,11 +232,11 @@ make trigger-dag
 
 The DAG `invoice_processing_pipeline` runs on a 5-minute schedule with `max_active_runs=1`.
 
-### Task 1 — `detect_new_invoices`
+### Task 1-`detect_new_invoices`
 
 Scans `data/invoices/raw/` and **atomically renames** each PDF into `data/invoices/in_progress/` before pushing the paths via XCom. This prevents duplicate processing if a DAG run overlaps with the next scheduled run.
 
-### Task 2 — `run_ocr`
+### Task 2-`run_ocr`
 
 For each claimed PDF:
 - Converts pages to images using `pdf2image` at configured DPI (default 300)
@@ -255,7 +255,7 @@ On failure: updates the invoice `processing_status` to `ocr_failed` in the DB an
 }
 ```
 
-### Task 3 — `run_llm_extraction`
+### Task 3-`run_llm_extraction`
 
 Reads OCR JSON from disk, sends the `full_text` to the configured LLM with a structured extraction prompt. Saves the result to `data/extracted/<stem>_extracted.json` and pushes the file path via XCom.
 
@@ -277,7 +277,7 @@ On failure: updates status to `extraction_failed`.
 }
 ```
 
-### Task 4 — `save_to_postgres`
+### Task 4-`save_to_postgres`
 
 - Computes SHA-256 of the source PDF for exact deduplication (no false positives from path substring matching)
 - Upserts the `Invoice` and `LineItem` rows
@@ -339,7 +339,7 @@ Data refreshes every 30 seconds. Click **🔄 Refresh** for immediate reload.
 
 ---
 
-## 🔧 Using a Local LLM (Ollama — no API key required)
+## 🔧 Using a Local LLM (Ollama-no API key required)
 
 1. Install [Ollama](https://ollama.ai) on your host machine
 2. Pull a capable model: `ollama pull mistral` or `ollama pull llama3`
@@ -420,17 +420,17 @@ make migrate
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `POSTGRES_PASSWORD` | ✅ | — | PostgreSQL password |
+| `POSTGRES_PASSWORD` | ✅ |-| PostgreSQL password |
 | `POSTGRES_USER` | | `invoice_user` | PostgreSQL user |
 | `POSTGRES_DB` | | `invoice_db` | Database name |
 | `POSTGRES_HOST` | | `postgres` | DB host (Docker service name) |
-| `OPENAI_API_KEY` | ✅ (if openai) | — | OpenAI API key |
+| `OPENAI_API_KEY` | ✅ (if openai) |-| OpenAI API key |
 | `LLM_PROVIDER` | | `openai` | `openai` or `local` |
 | `LLM_MODEL` | | `gpt-3.5-turbo` | Model name |
 | `LOCAL_LLM_URL` | | `http://host.docker.internal:11434` | Ollama endpoint |
-| `AIRFLOW__CORE__FERNET_KEY` | ✅ | — | Airflow encryption key (generate with `make secrets`) |
-| `AIRFLOW__WEBSERVER__SECRET_KEY` | ✅ | — | Airflow web session key |
-| `AIRFLOW_ADMIN_PASSWORD` | ✅ | — | Airflow UI admin password |
+| `AIRFLOW__CORE__FERNET_KEY` | ✅ |-| Airflow encryption key (generate with `make secrets`) |
+| `AIRFLOW__WEBSERVER__SECRET_KEY` | ✅ |-| Airflow web session key |
+| `AIRFLOW_ADMIN_PASSWORD` | ✅ |-| Airflow UI admin password |
 | `MAX_UPLOAD_SIZE_MB` | | `50` | Maximum PDF upload size |
 | `OCR_DPI` | | `300` | Tesseract rendering resolution |
 | `LOG_LEVEL` | | `INFO` | `DEBUG` / `INFO` / `WARNING` |
@@ -456,7 +456,7 @@ bash scripts/generate_secrets.sh
 | Dashboard | Streamlit + Plotly | 1.33 / 5.21 |
 | Config | pydantic-settings | 2.2 |
 | Testing | pytest + httpx | 8.2 / 0.27 |
-| Containers | Docker + Compose | — |
+| Containers | Docker + Compose |-|
 | Language | Python | 3.10 |
 
 ---
@@ -495,4 +495,4 @@ bash scripts/generate_secrets.sh
 
 ## 📄 License
 
-MIT — see `LICENSE` for details.
+MIT-see `LICENSE` for details.
