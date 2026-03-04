@@ -478,4 +478,3 @@ bash scripts/generate_secrets.sh
 **Dashboard shows "No invoices match filters"**
 → Run `make seed` to insert 50 synthetic demo invoices, then reload the dashboard.
 
----
